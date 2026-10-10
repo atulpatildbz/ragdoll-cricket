@@ -555,7 +555,9 @@ impl World {
             balls: Vec::new(),
             bursts: Vec::new(),
             time: 0.0,
-            sim_debt: 0.0,
+            // Half a substep in, so float noise in a steady frame time can't
+            // flip frames between n-1 and n+1 substeps.
+            sim_debt: SUB_DT * 0.5,
             last_ball_time: 0.0,
             ball_count: 0,
             ball_played_count: 0,
@@ -913,6 +915,31 @@ fn local_to_world(center: Vec2, angle: f32, p: Vec2) -> Vec2 {
     center + vec2(p.x * c - p.y * s, p.x * s + p.y * c)
 }
 
+/// Frame pacing. Measured frame times jitter by several ms even on a steady
+/// 60 Hz display (badly on Android), which made frames alternate between 3, 4
+/// and 5 physics substeps: visible judder. Average recent frame times, then
+/// snap to a common refresh interval when close, so a steady display gets a
+/// steady substep count. Averaging still adds up to real time across a hitch.
+#[derive(Default)]
+struct Pacer {
+    recent: [f32; 8],
+    n: usize,
+}
+
+impl Pacer {
+    fn smooth(&mut self, dt: f32) -> f32 {
+        self.recent[self.n % self.recent.len()] = dt;
+        self.n += 1;
+        let filled = self.n.min(self.recent.len());
+        let avg = self.recent[..filled].iter().sum::<f32>() / filled as f32;
+        [30.0, 60.0, 90.0, 120.0, 144.0, 165.0, 240.0]
+            .map(|hz| 1.0 / hz)
+            .into_iter()
+            .find(|t| (avg - t).abs() < t * 0.05)
+            .unwrap_or(avg)
+    }
+}
+
 fn window_conf() -> Conf {
     Conf {
         window_title: "Ragdoll Cricket".to_owned(),
@@ -958,6 +985,7 @@ async fn main() {
     let profile = std::env::var("RC_PROFILE").is_ok();
     let (mut t_phys, mut t_draw, mut t_frame, mut n_prof) = (0.0f64, 0.0f64, 0.0f64, 0u32);
     let mut shots_after_out = 0u32;
+    let mut pacer = Pacer::default();
     // Touch steers the bat like a trackpad: it follows the finger's movement,
     // not its position, so the finger never covers the batsman.
     let mut touch_cursor: Option<Vec2> = None;
@@ -990,7 +1018,7 @@ async fn main() {
         }
         let cursor_m = point![m(cursor.x), m(cursor.y)];
 
-        let dt = if snapshot_dir.is_some() { FRAME_DT } else { get_frame_time().min(0.1) };
+        let dt = if snapshot_dir.is_some() { FRAME_DT } else { pacer.smooth(get_frame_time().min(0.1)) };
         clock += dt;
         if screen != Screen::Title {
             let t0 = std::time::Instant::now();
