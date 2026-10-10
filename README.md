@@ -27,3 +27,17 @@ Esc quits.
 - `src/audio.rs`: procedurally synthesised sound effects
 - `SPEC.md`: the gameplay spec the game is built from
 - `assets/`: Lilita One font (SIL Open Font License, see `assets/OFL.txt`)
+
+## Download (macOS)
+
+Grab `RagdollCricket-<version>-macos-universal.zip` from [Releases](../../releases), unzip, and open
+**Ragdoll Cricket.app** (runs natively on Apple Silicon and Intel, macOS 11+).
+
+The app is ad-hoc signed, not notarized, so the first launch is blocked by Gatekeeper.
+Either right-click the app → **Open** → **Open**, or run:
+
+```sh
+xattr -dr com.apple.quarantine "Ragdoll Cricket.app"
+```
+
+To build the release zip yourself: `scripts/package-macos.sh` (outputs to `dist/`).
