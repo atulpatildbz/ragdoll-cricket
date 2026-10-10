@@ -1,5 +1,5 @@
 //! All drawing: a cartoon stadium, an outlined ragdoll batsman, and the UI.
-//! Everything is drawn procedurally; the only asset is the OFL font in assets/.
+//! The scene is drawn procedurally; the batsman is painted parts from assets/batsman/.
 
 use super::*;
 
@@ -12,15 +12,65 @@ const CREAM: Color = Color::new(0.96, 0.94, 0.89, 1.0);
 const CREAM_SHADE: Color = Color::new(0.84, 0.82, 0.76, 1.0);
 const PAD: Color = Color::new(0.99, 0.99, 0.97, 1.0);
 const PAD_RIB: Color = Color::new(0.82, 0.83, 0.8, 1.0);
-const SKIN: Color = Color::new(0.79, 0.54, 0.37, 1.0);
-const SKIN_DARK: Color = Color::new(0.66, 0.43, 0.27, 1.0);
-const GRILLE: Color = Color::new(0.8, 0.82, 0.86, 1.0);
-const SHOE: Color = Color::new(0.17, 0.18, 0.23, 1.0);
-const WILLOW: Color = Color::new(0.95, 0.82, 0.6, 1.0);
-const WILLOW_EDGE: Color = Color::new(0.84, 0.68, 0.42, 1.0);
+const SHOE: Color = Color::new(0.93, 0.92, 0.87, 1.0);
+const SOLE: Color = Color::new(0.62, 0.63, 0.62, 1.0);
+const STRAP: Color = Color::new(0.45, 0.5, 0.56, 1.0);
 
 pub struct Art {
     font: Font,
+    kit: Kit,
+}
+
+/// A painted body part, pinned to the rig by two pixels of its image.
+struct Sprite {
+    tex: Texture2D,
+    a: Vec2,
+    b: Vec2,
+}
+
+impl Sprite {
+    fn new(png: &[u8], a: (f32, f32), b: (f32, f32)) -> Self {
+        let tex = Texture2D::from_file_with_format(png, Some(ImageFormat::Png));
+        tex.set_filter(FilterMode::Linear);
+        Self { tex, a: vec2(a.0, a.1), b: vec2(b.0, b.1) }
+    }
+
+    /// Draw so that image pixels `a` and `b` land on screen points `pa` and
+    /// `pb`: uniform scale plus rotation, so the art never squashes.
+    fn draw(&self, pa: Vec2, pb: Vec2, tint: Color) {
+        let (img, scr) = (self.b - self.a, pb - pa);
+        let k = scr.length() / img.length();
+        let rotation = scr.y.atan2(scr.x) - img.y.atan2(img.x);
+        let top_left = pa - self.a * k;
+        draw_texture_ex(&self.tex, top_left.x, top_left.y, tint, DrawTextureParams {
+            dest_size: Some(self.tex.size() * k),
+            rotation,
+            pivot: Some(pa),
+            ..Default::default()
+        });
+    }
+}
+
+/// The batsman's parts, cut from assets/batsman/. Anchors are joint centres
+/// (limbs) or a pair of points matched to body-local positions (head, torso, bat).
+struct Kit {
+    head: Sprite,
+    torso: Sprite,
+    upper_arm: Sprite,
+    forearm: Sprite,
+    bat: Sprite,
+}
+
+impl Kit {
+    fn load() -> Self {
+        Self {
+            head: Sprite::new(include_bytes!("../assets/batsman/head.png"), (84.0, 85.0), (84.0, 185.0)),
+            torso: Sprite::new(include_bytes!("../assets/batsman/torso.png"), (74.0, 2.0), (80.0, 162.0)),
+            upper_arm: Sprite::new(include_bytes!("../assets/batsman/upper_arm.png"), (23.0, 23.0), (58.0, 93.0)),
+            forearm: Sprite::new(include_bytes!("../assets/batsman/forearm.png"), (19.0, 25.0), (96.0, 47.0)),
+            bat: Sprite::new(include_bytes!("../assets/batsman/bat.png"), (28.5, 2.0), (28.5, 391.0)),
+        }
+    }
 }
 
 impl Art {
@@ -28,7 +78,7 @@ impl Art {
         let mut font = load_ttf_font_from_bytes(include_bytes!("../assets/LilitaOne-Regular.ttf"))
             .expect("bundled font loads");
         font.set_filter(FilterMode::Linear);
-        Self { font }
+        Self { font, kit: Kit::load() }
     }
 
     /// Text centred on `center` (screen px), with an optional outline.
@@ -153,7 +203,7 @@ pub fn draw_scene(art: &Art, world: &World, view: &View, time: f32, best: u32) {
     draw_zones(art, view);
     draw_shadows(world, view);
     draw_wicket(world, view);
-    draw_batsman(world, view);
+    draw_batsman(art, world, view);
     draw_balls(world, view);
     draw_bursts(art, world, view);
     draw_hud(art, world, view, best);
@@ -378,74 +428,39 @@ fn draw_wicket(world: &World, view: &View) {
     inked_capsule(l, r, view.len(4.0), ol, Color::from_hex(0xd8a75a));
 }
 
-fn draw_batsman(world: &World, view: &View) {
+fn draw_batsman(art: &Art, world: &World, view: &View) {
+    let kit = &art.kit;
     let ol = 1.3 * view.k;
     let jp = |i: usize| {
         let (h, local) = world.joint_points[i];
         let p = world.bodies[h].position() * local * PX_PER_M;
         view.world(vec2(p.x, p.y))
     };
-    let r = |px: f32| view.len(px);
+    // A sprite pinned to two body-local points (world px) of a rigid body.
+    let pinned = |s: &Sprite, (o, a): (Vec2, f32), la: (f32, f32), lb: (f32, f32)| {
+        s.draw(at(view, o, a, la.0, la.1), at(view, o, a, lb.0, lb.1), WHITE);
+    };
+    let shade = Color::new(0.88, 0.88, 0.9, 1.0);
 
-    // Back leg (in shade).
+    // Back leg and back upper arm, in shade behind the body.
     leg(view, jp(3), jp(4), jp(5), ol, 0.86);
-    // Back (bottom) arm, mostly hidden behind the body.
-    inked_capsule(jp(10), jp(11), r(13.0), ol, KIT_DARK);
-    inked_capsule(jp(11), jp(12), r(10.0), ol, SKIN_DARK);
-
-    // Torso: shirt, trousers waistband, collar and trim, in chest space.
-    let (c, a) = part_pose(world, Part::Chest);
-    let shirt = [(-36.0, -40.0), (-18.0, -50.0), (24.0, -50.0), (40.0, -30.0), (34.0, 40.0), (-32.0, 44.0)];
-    inked_poly(&shirt.map(|(x, y)| at(view, c, a, x, y)), ol, KIT);
-    let trousers = [(-32.0, 38.0), (34.0, 36.0), (32.0, 60.0), (-30.0, 62.0)];
-    inked_poly(&trousers.map(|(x, y)| at(view, c, a, x, y)), ol, CREAM);
-    let trim = [(30.0, -36.0), (38.0, -30.0), (34.0, 36.0), (27.0, 36.0)];
-    poly(&trim.map(|(x, y)| at(view, c, a, x, y)), GOLD);
-    let collar = [(4.0, -50.0), (24.0, -50.0), (14.0, -38.0)];
-    poly(&collar.map(|(x, y)| at(view, c, a, x, y)), GOLD);
-    let belt = [(-31.0, 38.0), (33.0, 36.0), (33.0, 42.0), (-31.0, 44.0)];
-    poly(&belt.map(|(x, y)| at(view, c, a, x, y)), Color::from_hex(0x3b2a20));
-
-    // Front leg.
+    kit.upper_arm.draw(jp(10), jp(11), shade);
+    pinned(&kit.torso, part_pose(world, Part::Chest), (0.0, -52.0), (2.0, 50.0));
     leg(view, jp(0), jp(1), jp(2), ol, 1.0);
 
-    // Bat, then gloves on the handle, then the front arm.
-    draw_bat(world, view, ol);
-    glove(view, jp(12), ol);
-    inked_capsule(jp(7), jp(8), r(14.0), ol, KIT);
-    inked_capsule(jp(8), jp(9), r(10.5), ol, SKIN);
-    glove(view, jp(9), ol);
+    // The bat (pinned to its own collider outline), the bottom hand gripping
+    // it, then the front arm over everything.
+    pinned(&kit.bat, body_pose(world, world.bat), (11.7, 0.0), (11.7, 177.85));
+    kit.forearm.draw(jp(11), jp(12), shade);
+    kit.upper_arm.draw(jp(7), jp(8), WHITE);
+    kit.forearm.draw(jp(8), jp(9), WHITE);
 
     // Head last, so the front arm tucks under the chin rather than hiding the face.
-    let (hc, _) = part_pose(world, Part::Head);
-    let h = |x: f32, y: f32| view.world(hc + vec2(x, y));
-    inked_capsule(jp(6), h(-6.0, 14.0), r(11.0), ol, SKIN_DARK);
-    // Face (behind the grille), ear.
-    inked_circle(h(6.0, 8.0), r(22.0), ol, SKIN);
-    // Shell, neck guard and peak.
-    inked_circle(h(-6.0, -4.0), r(29.0), ol, KIT);
-    let guard = [h(-36.0, -2.0), h(-4.0, -2.0), h(-2.0, 22.0), h(-30.0, 24.0)];
-    inked_poly(&guard, ol, KIT);
-    let peak = [h(8.0, -20.0), h(44.0, -12.0), h(42.0, -4.0), h(10.0, -6.0)];
-    inked_poly(&peak, ol, KIT_DARK);
-    draw_circle(h(-6.0, -4.0).x, h(-6.0, -4.0).y, r(24.0), KIT);
-    // Stripe and badge.
-    let stripe = [h(-30.0, -14.0), h(-26.0, -22.0), h(18.0, -22.0), h(18.0, -15.0)];
-    poly(&stripe, GOLD);
-    draw_circle(h(-12.0, 6.0).x, h(-12.0, 6.0).y, r(7.0), GOLD);
-    // Grille.
-    for x in [22.0, 30.0, 38.0] {
-        let (a, b) = (h(x, -4.0), h(x - 4.0, 26.0));
-        draw_line(a.x, a.y, b.x, b.y, r(2.6), GRILLE);
-    }
-    for y in [6.0, 16.0] {
-        let (a, b) = (h(14.0, y), h(40.0 - (y + 4.0) * 0.13, y));
-        draw_line(a.x, a.y, b.x, b.y, r(2.6), GRILLE);
-    }
-
+    pinned(&kit.head, part_pose(world, Part::Head), (2.0, -2.0), (2.0, 48.0));
 }
 
-/// Thigh, pad (with ribs and knee roll), then the shoe in front.
+
+/// Thigh, pad (with ribs, straps and knee roll), then the shoe in front.
 fn leg(view: &View, foot: Vec2, knee: Vec2, hip: Vec2, ol: f32, light: f32) {
     let r = |px: f32| view.len(px);
     inked_capsule(hip, knee, r(19.0), ol, shade(CREAM, light));
@@ -459,40 +474,17 @@ fn leg(view: &View, foot: Vec2, knee: Vec2, hip: Vec2, ol: f32, light: f32) {
         let b = bottom + side * r(off);
         draw_line(a.x, a.y, b.x, b.y, r(2.5), shade(PAD_RIB, light));
     }
+    for t in [0.45, 0.8] {
+        let m = top.lerp(bottom, t);
+        let (a, b) = (m - side * r(19.0), m + side * r(19.0));
+        draw_line(a.x, a.y, b.x, b.y, r(4.0), shade(STRAP, light));
+    }
     inked_circle(knee, r(15.0), ol, shade(PAD, light));
     draw_circle(knee.x, knee.y, r(8.0), shade(PAD_RIB, light));
     // Shoe on the turf, toe towards the bowler.
     let sole = foot + vec2(0.0, r(3.0));
     inked_rrect(sole.x - r(18.0), sole.y - r(17.0), r(50.0), r(18.0), r(8.0), ol, shade(SHOE, light.max(0.95)));
-    draw_rectangle(sole.x - r(16.0), sole.y - r(3.0), r(46.0), r(3.0), shade(WHITE, light));
-}
-
-fn glove(view: &View, p: Vec2, ol: f32) {
-    let r = view.len(16.0);
-    inked_circle(p, r, ol, PAD);
-    draw_rectangle(p.x - r * 0.9, p.y - r * 0.25, r * 1.8, r * 0.5, KIT);
-    for i in 0..3 {
-        let y = p.y - r * 0.75 + i as f32 * r * 0.3;
-        draw_line(p.x + r * 0.2, y, p.x + r * 0.8, y, view.k * 0.6, PAD_RIB);
-    }
-}
-
-fn draw_bat(world: &World, view: &View, ol: f32) {
-    let (o, a) = body_pose(world, world.bat);
-    let pt = |x: f32, y: f32| at(view, o, a, x, y);
-    let handle: Vec<Vec2> = BAT_HANDLE.iter().map(|&(x, y)| pt(x, y)).collect();
-    inked_poly(&handle, ol, Color::from_hex(0x2b2b33));
-    for y in [10.0, 22.0, 34.0, 46.0] {
-        let (l, r) = (pt(8.0, y), pt(15.5, y));
-        draw_line(l.x, l.y, r.x, r.y, view.len(3.0), Color::from_hex(0xc0392b));
-    }
-    let blade: Vec<Vec2> = BAT_BLADE.iter().map(|&(x, y)| pt(x, y)).collect();
-    inked_poly(&blade, ol, WILLOW);
-    poly(&[pt(1.5, 58.0), pt(7.0, 58.0), pt(6.0, 170.0), pt(0.5, 166.0)], WILLOW_EDGE);
-    poly(&[pt(0.5, 166.0), pt(23.0, 166.0), pt(18.0, 176.0), pt(5.0, 176.0)], WILLOW_EDGE);
-    // Maker's sticker.
-    poly(&[pt(8.0, 72.0), pt(21.0, 72.0), pt(21.5, 104.0), pt(8.5, 104.0)], KIT);
-    poly(&[pt(8.0, 80.0), pt(21.0, 80.0), pt(21.0, 86.0), pt(8.0, 86.0)], GOLD);
+    draw_rectangle(sole.x - r(16.0), sole.y - r(4.0), r(46.0), r(4.0), shade(SOLE, light));
 }
 
 fn draw_balls(world: &World, view: &View) {
