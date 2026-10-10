@@ -23,7 +23,7 @@ Esc quits.
 ## Layout
 
 - `src/main.rs`: physics world, rules, game flow
-- `src/art.rs`: all drawing (procedural; no image assets)
+- `src/art.rs`: all drawing (procedural scene; the batsman is painted parts from `assets/batsman/`)
 - `src/audio.rs`: procedurally synthesised sound effects
 - `SPEC.md`: the gameplay spec the game is built from
 - `assets/`: Lilita One font (SIL Open Font License, see `assets/OFL.txt`)
@@ -41,3 +41,19 @@ xattr -dr com.apple.quarantine "Ragdoll Cricket.app"
 ```
 
 To build the release zip yourself: `scripts/package-macos.sh` (outputs to `dist/`).
+
+## Download (Android)
+
+Grab `RagdollCricket-<version>-android-arm64.apk` from [Releases](../../releases) and open it on the
+phone (allow installing from your browser or file manager when asked), or from a computer:
+
+```sh
+adb install RagdollCricket-<version>-android-arm64.apk
+```
+
+Drag anywhere on the screen to swing the bat: it follows your finger's movement, like a trackpad.
+The APK is debug-signed (not from the Play Store), so Play Protect may ask you to confirm the install.
+
+To build it yourself (needs Docker): `scripts/build-android.sh`. It builds in macroquad's
+`cargo-quad-apk` image and installs to a connected device; with several adb devices, set
+`ANDROID_SERIAL`.

@@ -599,7 +599,7 @@ pub fn draw_title(art: &Art, view: &View) -> bool {
     art.text("RAGDOLL", view.stage(vec2(295.0, 92.0)), 46.0 * view.k, GOLD, Some((INK, 3.0 * view.k)));
     art.text("CRICKET", view.stage(vec2(295.0, 136.0)), 46.0 * view.k, WHITE, Some((INK, 3.0 * view.k)));
     let lines = [
-        "Move the mouse to swing the bat",
+        if cfg!(target_os = "android") { "Drag anywhere to swing the bat" } else { "Move the mouse to swing the bat" },
         "Hit the far wall: higher scores more",
         "Avoid the roof, the keeper and your stumps!",
     ];

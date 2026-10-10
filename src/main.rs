@@ -284,6 +284,8 @@ const BAT_BLADE: [(f32, f32); 6] = [
     (0.0, 168.0),
 ];
 const BAT_GRAB: (f32, f32) = (-102.0, 121.0);
+/// Bat travel per unit of finger travel, for touch control.
+const TOUCH_GAIN: f32 = 1.5;
 
 // ---------- runtime state ----------
 
@@ -956,6 +958,10 @@ async fn main() {
     let profile = std::env::var("RC_PROFILE").is_ok();
     let (mut t_phys, mut t_draw, mut t_frame, mut n_prof) = (0.0f64, 0.0f64, 0.0f64, 0u32);
     let mut shots_after_out = 0u32;
+    // Touch steers the bat like a trackpad: it follows the finger's movement,
+    // not its position, so the finger never covers the batsman.
+    let mut touch_cursor: Option<Vec2> = None;
+    let mut last_touch: Option<Vec2> = None;
 
     loop {
         if is_key_pressed(KeyCode::Escape) {
@@ -963,6 +969,22 @@ async fn main() {
         }
         let view = View::current();
         let mut cursor = view.screen_to_world(Vec2::from(mouse_position()));
+        if let Some(t) = touches().first() {
+            let p = view.screen_to_world(t.position);
+            let c = touch_cursor.get_or_insert(vec2(BAT_GRAB.0, BAT_GRAB.1));
+            if let (TouchPhase::Moved | TouchPhase::Stationary, Some(prev)) = (t.phase, last_touch) {
+                *c += (p - prev) * TOUCH_GAIN;
+            }
+            last_touch = Some(p);
+        } else {
+            last_touch = None;
+        }
+        if let Some(c) = &mut touch_cursor {
+            let lo = view.screen_to_world(Vec2::ZERO);
+            let hi = view.screen_to_world(vec2(screen_width(), screen_height()));
+            *c = c.clamp(lo, hi);
+            cursor = *c;
+        }
         if snapshot_dir.is_some() {
             cursor = autoplay_cursor(&world);
         }

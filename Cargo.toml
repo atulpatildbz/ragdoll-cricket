@@ -1,11 +1,24 @@
 [package]
-name = "ragdoll-cricket"
+# Underscored so the Android launcher, which loads the library named by the
+# last segment of package_name, can find it (Java names can't hold a '-').
+name = "ragdoll_cricket"
 version = "0.1.0"
 edition = "2021"
 
 [dependencies]
 macroquad = { version = "0.4", features = ["audio"] }
 rapier2d = "0.22"
+
+# Android build (cargo quad-apk, see scripts/build-android.sh).
+[package.metadata.android]
+package_name = "com.atulpatildbz.ragdoll_cricket"
+label = "Ragdoll Cricket"
+build_targets = ["aarch64-linux-android"]
+fullscreen = true
+
+[package.metadata.android.activity_attributes]
+"android:screenOrientation" = "userLandscape"
+"android:exported" = "true"
 
 [profile.dev]
 opt-level = 1

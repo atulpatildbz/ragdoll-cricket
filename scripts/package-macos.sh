@@ -16,8 +16,8 @@ done
 rm -rf "$app"
 mkdir -p "$app/Contents/MacOS"
 lipo -create -output "$app/Contents/MacOS/ragdoll-cricket" \
-    target/aarch64-apple-darwin/release/ragdoll-cricket \
-    target/x86_64-apple-darwin/release/ragdoll-cricket
+    target/aarch64-apple-darwin/release/ragdoll_cricket \
+    target/x86_64-apple-darwin/release/ragdoll_cricket
 
 cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
