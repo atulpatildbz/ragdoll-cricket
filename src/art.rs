@@ -19,6 +19,21 @@ const STRAP: Color = Color::new(0.45, 0.5, 0.56, 1.0);
 pub struct Art {
     font: Font,
     kit: Kit,
+    /// View scale the glyph cache was last warmed for.
+    warmed_k: std::cell::Cell<f32>,
+}
+
+/// Every text size the game draws, in stage px (times view.k on screen); the
+/// burst label animates across 26..48.
+const TEXT_SIZES: [f32; 10] = [9.0, 12.0, 13.0, 17.0, 19.0, 20.0, 26.0, 42.0, 46.0, 48.1];
+
+/// Glyphs are rasterised per pixel size, which is slow (tens of ms per frame
+/// on a phone when a label's size animates), so text is rasterised at sizes
+/// 1.25x apart and scaled down to the exact size.
+fn raster_size(size: f32) -> (u16, f32) {
+    let size = size.max(1.0);
+    let raster = 1.25f32.powf(size.log(1.25).ceil()).round().max(1.0);
+    (raster as u16, size / raster)
 }
 
 /// A painted body part, pinned to the rig by two pixels of its image.
@@ -78,27 +93,46 @@ impl Art {
         let mut font = load_ttf_font_from_bytes(include_bytes!("../assets/LilitaOne-Regular.ttf"))
             .expect("bundled font loads");
         font.set_filter(FilterMode::Linear);
-        Self { font, kit: Kit::load() }
+        Self { font, kit: Kit::load(), warmed_k: std::cell::Cell::new(0.0) }
+    }
+
+    /// Rasterise every glyph the game may draw at the current scale, so the
+    /// first "6" of an innings doesn't stall a frame. Re-runs on resize.
+    fn warm(&self, k: f32) {
+        if self.warmed_k.get() == k {
+            return;
+        }
+        self.warmed_k.set(k);
+        let chars: Vec<char> = (' '..='~').collect();
+        let (lo, hi) = (raster_size(TEXT_SIZES[0] * k).0, raster_size(TEXT_SIZES[9] * k).0);
+        let mut sizes: Vec<u16> = TEXT_SIZES.iter().map(|&s| raster_size(s * k).0).collect();
+        // The burst label passes through every raster size in its range.
+        sizes.extend((lo..=hi).map(|px| raster_size(px as f32).0).filter(|&r| r >= raster_size(26.0 * k).0));
+        sizes.sort_unstable();
+        sizes.dedup();
+        for size in sizes {
+            self.font.populate_font_cache(&chars, size);
+        }
     }
 
     /// Text centred on `center` (screen px), with an optional outline.
     fn text(&self, s: &str, center: Vec2, size: f32, fill: Color, outline: Option<(Color, f32)>) {
-        let size_px = size.max(1.0) as u16;
-        let dims = measure_text(s, Some(&self.font), size_px, 1.0);
+        let (raster, scale) = raster_size(size);
+        let dims = measure_text(s, Some(&self.font), raster, scale);
         let x = center.x - dims.width / 2.0;
         let y = center.y - dims.height / 2.0 + dims.offset_y;
         if let Some((oc, w)) = outline {
             let steps = 12;
             for i in 0..steps {
                 let a = i as f32 / steps as f32 * std::f32::consts::TAU;
-                self.raw_text(s, x + a.cos() * w, y + a.sin() * w, size_px, oc);
+                self.raw_text(s, x + a.cos() * w, y + a.sin() * w, raster, scale, oc);
             }
         }
-        self.raw_text(s, x, y, size_px, fill);
+        self.raw_text(s, x, y, raster, scale, fill);
     }
 
-    fn raw_text(&self, s: &str, x: f32, y: f32, size: u16, color: Color) {
-        draw_text_ex(s, x, y, TextParams { font: Some(&self.font), font_size: size, color, ..Default::default() });
+    fn raw_text(&self, s: &str, x: f32, y: f32, size: u16, scale: f32, color: Color) {
+        draw_text_ex(s, x, y, TextParams { font: Some(&self.font), font_size: size, font_scale: scale, color, ..Default::default() });
     }
 }
 
@@ -196,6 +230,7 @@ fn part_pose(world: &World, p: Part) -> (Vec2, f32) {
 // ---------- scene ----------
 
 pub fn draw_scene(art: &Art, world: &World, view: &View, time: f32, best: u32) {
+    art.warm(view.k);
     clear_background(INK);
     draw_sky(view, time);
     draw_stadium(art, view, time);
