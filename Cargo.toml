@@ -2,7 +2,7 @@
 # Underscored so the Android launcher, which loads the library named by the
 # last segment of package_name, can find it (Java names can't hold a '-').
 name = "ragdoll_cricket"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
 
 [dependencies]
