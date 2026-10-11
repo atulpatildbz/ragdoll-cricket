@@ -1035,18 +1035,18 @@ async fn main() {
 
         clock += dt;
         if screen == Screen::Playing || screen == Screen::Ended {
-            let t0 = std::time::Instant::now();
+            let t0 = miniquad::date::now();
             world.advance(dt, cursor_m, &sfx);
-            t_phys += t0.elapsed().as_secs_f64();
+            t_phys += miniquad::date::now() - t0;
             if world.game_over && screen == Screen::Playing {
                 best = best.max(world.total_score());
                 screen = Screen::Ended;
             }
         }
 
-        let t0 = std::time::Instant::now();
+        let t0 = miniquad::date::now();
         art::draw_scene(&art, &world, &view, clock, best);
-        t_draw += t0.elapsed().as_secs_f64();
+        t_draw += miniquad::date::now() - t0;
 
         match screen {
             Screen::Title => {

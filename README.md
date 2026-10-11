@@ -28,6 +28,13 @@ Esc quits.
 - `SPEC.md`: the gameplay spec the game is built from
 - `assets/`: Lilita One font (SIL Open Font License, see `assets/OFL.txt`)
 
+## Play in the browser
+
+**https://atulpatildbz.github.io/ragdoll-cricket/**
+
+Every push to `main` rebuilds the wasm version and redeploys it (`.github/workflows/pages.yml`).
+To try the web build locally: `scripts/serve-web.sh`, then open http://localhost:8000.
+
 ## Download (macOS)
 
 Grab `RagdollCricket-<version>-macos-universal.zip` from [Releases](../../releases), unzip, and open
