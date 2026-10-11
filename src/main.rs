@@ -283,7 +283,9 @@ const BAT_BLADE: [(f32, f32); 6] = [
     (5.0, 177.85),
     (0.0, 168.0),
 ];
-const BAT_GRAB: (f32, f32) = (-102.0, 121.0);
+/// Where the cursor holds the bat (world px, starting pose): on the blade's
+/// centreline, so the bat sits under the pointer.
+const BAT_GRAB: (f32, f32) = (-53.5, 121.0);
 /// Bat travel per unit of finger travel, for touch control.
 const TOUCH_GAIN: f32 = 1.5;
 /// How far ahead (real seconds) touch aims the bat along the finger's motion,
@@ -362,6 +364,8 @@ struct World {
     time: f32,
     sim_debt: f32,
     last_ball_time: f32,
+    /// Off in the RC_NO_BALLS test mode.
+    bowling: bool,
     ball_count: u32,
     ball_played_count: u32,
     score: u32,
@@ -566,6 +570,7 @@ impl World {
             // flip frames between n-1 and n+1 substeps.
             sim_debt: SUB_DT * 0.5,
             last_ball_time: 0.0,
+            bowling: true,
             ball_count: 0,
             ball_played_count: 0,
             score: 0,
@@ -863,7 +868,7 @@ impl World {
         while self.sim_debt >= SUB_DT {
             self.sim_debt -= SUB_DT;
             self.time += SUB_DT;
-            if !self.game_over && self.time - self.last_ball_time > BALL_INTERVAL {
+            if self.bowling && !self.game_over && self.time - self.last_ball_time > BALL_INTERVAL {
                 self.last_ball_time = self.time;
                 self.bowl();
             }
@@ -990,6 +995,14 @@ async fn main() {
     let mut frame_no = 0u32;
     // Dev aid: RC_PROFILE=1 prints where frame time goes.
     let profile = std::env::var("RC_PROFILE").is_ok();
+    // Dev aid: RC_NO_BALLS=1 skips the title, never bowls, and marks the mouse
+    // position (red) and the bat's grab point (blue), to check bat aim. It logs
+    // both twice a second; RC_NO_BALLS=<dir> also saves those frames there.
+    let no_balls = std::env::var("RC_NO_BALLS").is_ok();
+    if no_balls {
+        world.bowling = false;
+        screen = Screen::Playing;
+    }
     let (mut t_phys, mut t_draw, mut t_frame, mut n_prof) = (0.0f64, 0.0f64, 0.0f64, 0u32);
     let mut shots_after_out = 0u32;
     let mut pacer = Pacer::default();
@@ -1047,6 +1060,23 @@ async fn main() {
         let t0 = miniquad::date::now();
         art::draw_scene(&art, &world, &view, clock, best);
         t_draw += miniquad::date::now() - t0;
+        if no_balls {
+            let (mx, my) = mouse_position();
+            draw_line(mx - 12.0, my, mx + 12.0, my, 2.0, RED);
+            draw_line(mx, my - 12.0, mx, my + 12.0, 2.0, RED);
+            let g = world.bodies[world.bat].position() * world.bat_grab_local * PX_PER_M;
+            let g = view.world(vec2(g.x, g.y));
+            draw_circle(g.x, g.y, 4.0, BLUE);
+            if frame_no % 30 == 0 {
+                println!("mouse ({mx:.1},{my:.1}) grab ({:.1},{:.1}) screen {}x{} dpi {}", g.x, g.y, screen_width(), screen_height(), screen_dpi_scale());
+                if let Ok(dir) = std::env::var("RC_NO_BALLS") {
+                    if !dir.is_empty() && dir != "1" {
+                        get_screen_data().export_png(&format!("{dir}/f{frame_no:05}.png"));
+                    }
+                }
+            }
+            frame_no += 1;
+        }
 
         match screen {
             Screen::Title => {
