@@ -328,6 +328,7 @@ struct Burst {
 enum Screen {
     Title,
     Playing,
+    Paused,
     Ended,
 }
 
@@ -1006,7 +1007,8 @@ async fn main() {
         let dt = if snapshot_dir.is_some() { FRAME_DT } else { pacer.smooth(get_frame_time().min(0.1)) };
         let mut cursor = view.screen_to_world(Vec2::from(mouse_position()));
         let mut moved = Vec2::ZERO;
-        if let Some(t) = touches().first() {
+        // A paused drag must not move the bat.
+        if let (Some(t), false) = (touches().first(), screen == Screen::Paused) {
             let p = view.screen_to_world(t.position);
             let c = touch_cursor.get_or_insert(vec2(BAT_GRAB.0, BAT_GRAB.1));
             if let (TouchPhase::Moved | TouchPhase::Stationary, Some(prev)) = (t.phase, last_touch) {
@@ -1032,7 +1034,7 @@ async fn main() {
         let cursor_m = point![m(cursor.x), m(cursor.y)];
 
         clock += dt;
-        if screen != Screen::Title {
+        if screen == Screen::Playing || screen == Screen::Ended {
             let t0 = std::time::Instant::now();
             world.advance(dt, cursor_m, &sfx);
             t_phys += t0.elapsed().as_secs_f64();
@@ -1059,7 +1061,16 @@ async fn main() {
                     screen = Screen::Playing;
                 }
             }
-            Screen::Playing => {}
+            Screen::Playing => {
+                if art::pause_button(&view) || is_key_pressed(KeyCode::P) {
+                    screen = Screen::Paused;
+                }
+            }
+            Screen::Paused => {
+                if art::draw_paused(&art, &view) || is_key_pressed(KeyCode::P) {
+                    screen = Screen::Playing;
+                }
+            }
         }
 
         if let Some(dir) = &snapshot_dir {

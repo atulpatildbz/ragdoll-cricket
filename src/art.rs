@@ -628,6 +628,34 @@ fn button(art: &Art, view: &View, label: &str, center: Vec2, size: Vec2) -> bool
     hover && is_mouse_button_pressed(MouseButton::Left)
 }
 
+/// The in-game pause button, on the grass at bottom right. Returns true when clicked.
+pub fn pause_button(view: &View) -> bool {
+    let (center, size) = (vec2(556.0, 348.0), 34.0);
+    let a = view.stage(center - Vec2::splat(size / 2.0));
+    let s = size * view.k;
+    let m = Vec2::from(mouse_position());
+    let hover = m.x >= a.x && m.x <= a.x + s && m.y >= a.y && m.y <= a.y + s;
+    inked_rrect(a.x, a.y + 3.0 * view.k, s, s, 9.0 * view.k, 0.0, Color::new(0.0, 0.0, 0.0, 0.25));
+    let face = if hover { Color::from_hex(0x2a3561) } else { Color::from_hex(0x18213d) };
+    inked_rrect(a.x, a.y, s, s, 9.0 * view.k, 1.5 * view.k, face);
+    for dx in [-5.0, 5.0] {
+        let p = view.stage(center + vec2(dx - 2.5, -8.0));
+        rrect(p.x, p.y, 5.0 * view.k, 16.0 * view.k, 1.5 * view.k, WHITE);
+    }
+    hover && is_mouse_button_pressed(MouseButton::Left)
+}
+
+/// Returns true when RESUME is clicked.
+pub fn draw_paused(art: &Art, view: &View) -> bool {
+    dim(view);
+    card(view, 170.0, 100.0, 250.0, 170.0);
+    art.text("PAUSED", view.stage(vec2(295.0, 146.0)), 42.0 * view.k, GOLD, Some((INK, 3.0 * view.k)));
+    if !cfg!(target_os = "android") {
+        art.text("P pauses and resumes", view.stage(vec2(295.0, 184.0)), 12.0 * view.k, Color::from_hex(0xffe7ea), None);
+    }
+    button(art, view, "RESUME", vec2(295.0, 228.0), vec2(140.0, 38.0))
+}
+
 pub fn draw_title(art: &Art, view: &View) -> bool {
     dim(view);
     card(view, 120.0, 48.0, 350.0, 262.0);
