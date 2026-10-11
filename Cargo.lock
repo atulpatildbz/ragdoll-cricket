@@ -619,7 +619,7 @@ dependencies = [
 
 [[package]]
 name = "ragdoll_cricket"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "macroquad",
  "rapier2d",
