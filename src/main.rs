@@ -286,6 +286,12 @@ const BAT_BLADE: [(f32, f32); 6] = [
 const BAT_GRAB: (f32, f32) = (-102.0, 121.0);
 /// Bat travel per unit of finger travel, for touch control.
 const TOUCH_GAIN: f32 = 1.5;
+/// How far ahead (real seconds) touch aims the bat along the finger's motion,
+/// to cancel the bat spring's trail (~37 ms) and some of Android's input and
+/// display latency.
+const TOUCH_LEAD: f32 = 0.04;
+/// Smoothing time constant (real seconds) for the finger velocity estimate.
+const TOUCH_VEL_TAU: f32 = 0.03;
 
 // ---------- runtime state ----------
 
@@ -990,18 +996,22 @@ async fn main() {
     // not its position, so the finger never covers the batsman.
     let mut touch_cursor: Option<Vec2> = None;
     let mut last_touch: Option<Vec2> = None;
+    let mut touch_vel = Vec2::ZERO; // touch cursor velocity, world px per second
 
     loop {
         if is_key_pressed(KeyCode::Escape) {
             break;
         }
         let view = View::current();
+        let dt = if snapshot_dir.is_some() { FRAME_DT } else { pacer.smooth(get_frame_time().min(0.1)) };
         let mut cursor = view.screen_to_world(Vec2::from(mouse_position()));
+        let mut moved = Vec2::ZERO;
         if let Some(t) = touches().first() {
             let p = view.screen_to_world(t.position);
             let c = touch_cursor.get_or_insert(vec2(BAT_GRAB.0, BAT_GRAB.1));
             if let (TouchPhase::Moved | TouchPhase::Stationary, Some(prev)) = (t.phase, last_touch) {
-                *c += (p - prev) * TOUCH_GAIN;
+                moved = (p - prev) * TOUCH_GAIN;
+                *c += moved;
             }
             last_touch = Some(p);
         } else {
@@ -1011,14 +1021,16 @@ async fn main() {
             let lo = view.screen_to_world(Vec2::ZERO);
             let hi = view.screen_to_world(vec2(screen_width(), screen_height()));
             *c = c.clamp(lo, hi);
-            cursor = *c;
+            // Aim ahead along the finger's motion; the lead fades with the
+            // velocity estimate once the finger stops or lifts.
+            touch_vel += (moved / dt - touch_vel) * (1.0 - (-dt / TOUCH_VEL_TAU).exp());
+            cursor = (*c + touch_vel * TOUCH_LEAD).clamp(lo, hi);
         }
         if snapshot_dir.is_some() {
             cursor = autoplay_cursor(&world);
         }
         let cursor_m = point![m(cursor.x), m(cursor.y)];
 
-        let dt = if snapshot_dir.is_some() { FRAME_DT } else { pacer.smooth(get_frame_time().min(0.1)) };
         clock += dt;
         if screen != Screen::Title {
             let t0 = std::time::Instant::now();
