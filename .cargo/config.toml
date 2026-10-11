@@ -1,4 +1,0 @@
-# Audio functions (audio_init, ...) come from mq_js_bundle.js at runtime, so
-# let them stay undefined at link time; newer Rust no longer does by default.
-[target.wasm32-unknown-unknown]
-rustflags = ["-C", "link-arg=--allow-undefined"]
